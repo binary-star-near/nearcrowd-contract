@@ -8,7 +8,7 @@ edition = "2018"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-near-sdk = {version = "3.0.0-pre.3", git = "https://github.com/near/near-sdk-rs" }
+near-sdk = "3.1.0"
 
 [profile.release]
 codegen-units = 1
@@ -26,5 +26,3 @@ quickcheck_macros = "0.9"
 log = "0.4"
 rand = "0.7"
 env_logger = { version = "0.7.1", default-features = false }
-near-crypto = { git = "https://github.com/near/nearcore.git" }
-near-primitives = { git = "https://github.com/near/nearcore.git" }
