@@ -17,7 +17,7 @@ const config = {
 
 const methods = {
   viewMethods: ['get_account_stats'],
-  changeMethods: ['new'],
+  changeMethods: ['new', 'add_taskset', 'add_tasks'],
 };
 
 let near;
@@ -66,9 +66,17 @@ const initNear = async () => {
   }
 };
 
-async function test() {
+const setupAccounts = () => {
+  const admin = new nearAPI.Account(near.connection, config.contractId);
+  const adminContract = new nearAPI.Contract(admin, config.contractId, methods);
   const alice = new nearAPI.Account(near.connection, config.aliceId);
   const aliceContract = new nearAPI.Contract(alice, config.contractId, methods);
+
+  return { adminContract, aliceContract };
+};
+
+async function testSimple() {
+  const { _, aliceContract } = setupAccounts();
 
   const stats = await aliceContract.get_account_stats({
     account_id: config.contractId,
@@ -76,12 +84,75 @@ async function test() {
   assert.deepEqual(stats, { balance: '0', successful: 0, failed: 0 });
 }
 
+const testTaskset = async () => {
+  const { adminContract, aliceContract } = setupAccounts();
+
+  // Administrator (owner) can add new tasksets.
+  await assert.doesNotReject(async () => {
+    await adminContract.add_taskset({
+      args: {
+        ordinal: 0, // index of taskset
+        max_price: '135000000000000000000000', // 0.135 N
+        min_price: '125000000000000000000000', // 0.125 N,
+        mtasks_per_second: '100', // 1 task per 100 seconds
+      },
+    });
+  });
+
+  // Unprivileged user cannot add new tasksets.
+  await assert.rejects(async () => {
+    await aliceContract.add_taskset({
+      args: {
+        ordinal: 1, // index of taskset
+        max_price: '135000000000000000000000', // 0.135 N
+        min_price: '125000000000000000000000', // 0.125 N,
+        mtasks_per_second: '100', // 1 task per 100 seconds
+      },
+    });
+  });
+
+  // Administrator (owner) can add new tasks.
+  await assert.doesNotReject(async () => {
+    await adminContract.add_tasks({
+      args: {
+        task_ordinal: 0, // index of taskset
+        hashes: [
+          '12345678901234567890123456789000'.split('').map(Number),
+          '12345678901234567890123456789001'.split('').map(Number),
+        ],
+      },
+    });
+  });
+
+  // Unprivileged user can't add new tasks.
+  await assert.rejects(async () => {
+    await aliceContract.add_tasks({
+      args: {
+        task_ordinal: 0,
+        hashes: ['12345678901234567890123456789002'.split('').map(Number)],
+      },
+    });
+  });
+
+  // Non-existent index of a taskset.
+  await assert.rejects(async () => {
+    await adminContract.add_tasks({
+      args: {
+        task_ordinal: 1,
+        hashes: ['12345678901234567890123456789002'.split('').map(Number)],
+      },
+    });
+  });
+
+}
+
 (async function () {
   console.log('Initialize NEAR sandbox...');
   await initNear();
 
   console.log('Start tests...');
-  await test();
+  await testSimple();
+  await testTaskset();
 
   console.log('Done.');
 })();
