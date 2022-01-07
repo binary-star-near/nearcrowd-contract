@@ -23,6 +23,10 @@ const methods = {
     'add_tasks',
     'update_taskset_prices',
     'update_mtasks_per_second',
+    'whitelist_account',
+    'ban_account',
+    'approve_solution',
+    'change_taskset',
   ],
 };
 
@@ -184,6 +188,62 @@ const testTaskset = async () => {
       args: {
         task_ordinal: 0,
         mtasks_per_second: '102',
+      },
+    });
+  });
+
+  await assert.rejects(async () => {
+    await aliceContract.change_taskset({
+      args: {
+        new_task_ord: 0,
+      },
+    });
+  });
+
+  await assert.doesNotReject(async () => {
+    await adminContract.whitelist_account({
+      args: {
+        account_id: config.aliceId,
+      },
+    });
+  });
+
+  await assert.rejects(async () => {
+    await aliceContract.whitelist_account({
+      args: {
+        account_id: config.aliceId,
+      },
+    });
+  });
+
+  await assert.doesNotReject(async () => {
+    await aliceContract.change_taskset({
+      args: {
+        new_task_ord: 0,
+      },
+    });
+  });
+
+  await assert.doesNotReject(async () => {
+    await adminContract.ban_account({
+      args: {
+        account_id: config.aliceId,
+      },
+    });
+  });
+
+  await assert.rejects(async () => {
+    await aliceContract.ban_account({
+      args: {
+        account_id: config.aliceId,
+      },
+    });
+  });
+
+  await assert.rejects(async () => {
+    await aliceContract.change_taskset({
+      args: {
+        new_task_ord: 0,
       },
     });
   });
