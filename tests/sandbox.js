@@ -17,7 +17,13 @@ const config = {
 
 const methods = {
   viewMethods: ['get_account_stats'],
-  changeMethods: ['new', 'add_taskset', 'add_tasks'],
+  changeMethods: [
+    'new',
+    'add_taskset',
+    'add_tasks',
+    'update_taskset_prices',
+    'update_mtasks_per_second',
+  ],
 };
 
 let near;
@@ -144,7 +150,44 @@ const testTaskset = async () => {
     });
   });
 
-}
+  await assert.doesNotReject(async () => {
+    await adminContract.update_taskset_prices({
+      args: {
+        task_ordinal: 0,
+        new_min_price: '126000000000000000000000',
+        new_max_price: '136000000000000000000000',
+      },
+    });
+  });
+
+  await assert.rejects(async () => {
+    await aliceContract.update_taskset_prices({
+      args: {
+        task_ordinal: 0,
+        new_min_price: '126000000000000000000000',
+        new_max_price: '136000000000000000000000',
+      },
+    });
+  });
+
+  await assert.doesNotReject(async () => {
+    await adminContract.update_mtasks_per_second({
+      args: {
+        task_ordinal: 0,
+        mtasks_per_second: '101',
+      },
+    });
+  });
+
+  await assert.rejects(async () => {
+    await aliceContract.update_mtasks_per_second({
+      args: {
+        task_ordinal: 0,
+        mtasks_per_second: '102',
+      },
+    });
+  });
+};
 
 (async function () {
   console.log('Initialize NEAR sandbox...');
