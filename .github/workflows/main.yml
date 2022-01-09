@@ -35,15 +35,9 @@ jobs:
 
     steps:
     - uses: actions/checkout@v2
-    - name: Install NEAR Sandbox
-      run: npm install near-sandbox
     - name: Install NPM dependencies
       run: npm install
     - name: Build NEAR contract
       run: npm run build
     - name: Run integration tests
-      run: |
-        rm -rf /tmp/near-sandbox
-        ./node_modules/near-sandbox/bin/near-sandbox --home /tmp/near-sandbox init
-        ./node_modules/near-sandbox/bin/near-sandbox --home /tmp/near-sandbox run &
-        npm test
+      run: npm test
