@@ -29,7 +29,22 @@ _**Note**: release build is needed to minimize the wasm32 binary._
 2. _`.cargo/config` contains stripping flags `-C link-args=-s`,_
 3. _`--release` enables release profile._
 
-## Deployment
+## Test
+
+Rust unit tests:
+
+```bash
+cargo test
+```
+
+Integration tests:
+
+```bash
+npm install
+npm test
+```
+
+## Deploy
 
 ### On `sandbox`:
 
