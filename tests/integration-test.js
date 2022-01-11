@@ -4,7 +4,7 @@ const BN = require('bn.js');
 const fs = require('fs').promises;
 const assert = require('assert').strict;
 
-process.env.NEAR_NO_LOGS = true;
+process.env.NEAR_NO_LOGS = 'defined';
 
 const config = {
   networkId: 'sandbox',
@@ -15,10 +15,19 @@ const config = {
   masterId: 'test.near',
   contractId: 'contract.test.near',
   aliceId: 'alice.test.near',
+  bobId: 'bob.test.near', // always unregistered (banned) account
 };
 
 const methods = {
-  viewMethods: ['get_account_stats'],
+  viewMethods: [
+    'is_account_whitelisted',
+    'get_current_taskset',
+    'get_current_assignment',
+    'get_account_stats',
+    'get_account_state',
+    'get_taskset_state',
+    'get_task_review_state',
+  ],
   changeMethods: [
     'new',
     'add_taskset',
@@ -29,11 +38,19 @@ const methods = {
     'ban_account',
     'approve_solution',
     'change_taskset',
+    'apply_for_assignment',
+    'claim_assignment',
+    'return_assignment',
   ],
 };
 
 // Global NEAR connection.
 let near;
+
+// Accounts.
+let adminContract;
+let aliceContract;
+let bobContract;
 
 before('Initialize NEAR sandbox', async function () {
   // 10 seconds at most for test execution.
@@ -57,10 +74,12 @@ before('Initialize NEAR sandbox', async function () {
   let masterAccount = new nearAPI.Account(near.connection, config.masterId);
 
   // Create test accounts.
-  await masterAccount.createAccount(config.aliceId, pubKey, config.amount);
   await masterAccount.createAccount(config.contractId, pubKey, config.amount);
-  keyStore.setKey(config.networkId, config.aliceId, privKey);
+  await masterAccount.createAccount(config.aliceId, pubKey, config.amount);
+  await masterAccount.createAccount(config.bobId, pubKey, config.amount);
   keyStore.setKey(config.networkId, config.contractId, privKey);
+  keyStore.setKey(config.networkId, config.aliceId, privKey);
+  keyStore.setKey(config.networkId, config.bobId, privKey);
 
   // Deploy the contract.
   const wasm = await fs.readFile(config.contractPath);
@@ -70,13 +89,19 @@ before('Initialize NEAR sandbox', async function () {
   // Initialize the contract.
   const contract = new nearAPI.Contract(account, config.contractId, methods);
   await contract.new({ args: {} });
+
+  // Initialize accounts connected to the contract for all test cases.
+  const admin = new nearAPI.Account(near.connection, config.contractId);
+  const alice = new nearAPI.Account(near.connection, config.aliceId);
+  const bob = new nearAPI.Account(near.connection, config.bobId);
+  adminContract = new nearAPI.Contract(admin, config.contractId, methods);
+  aliceContract = new nearAPI.Contract(alice, config.contractId, methods);
+  bobContract = new nearAPI.Contract(bob, config.contractId, methods);
 });
 
-describe('Anyone', async () => {
-  it('should get an account statistic', async () => {
-    const user = new nearAPI.Account(near.connection, config.aliceId);
-    const userContract = new nearAPI.Contract(user, config.contractId, methods);
-    const stats = await userContract.get_account_stats({
+describe('Anyone', async function () {
+  it('should get an account statistic (smoke test)', async () => {
+    const stats = await bobContract.get_account_stats({
       account_id: config.contractId,
     });
     assert.deepEqual(stats, { balance: '0', successful: 0, failed: 0 });
@@ -84,15 +109,9 @@ describe('Anyone', async () => {
 });
 
 describe('Admin', async function () {
-  let adminContract;
-
-  // 6 seconds at most for execution of each test case (instead of 2).
-  this.timeout(6000);
+  this.timeout(5000);
 
   before('should add a taskset', async () => {
-    const admin = new nearAPI.Account(near.connection, config.contractId);
-    adminContract = new nearAPI.Contract(admin, config.contractId, methods);
-
     await assert.doesNotReject(async () => {
       await adminContract.add_taskset({
         args: {
@@ -172,19 +191,10 @@ describe('Admin', async function () {
   });
 });
 
-describe('User', async function () {
-  let adminContract;
-  let aliceContract;
-
-  // 5 seconds at most for execution of each test case (instead of 2).
+describe('Unregistered User', async function () {
   this.timeout(5000);
 
-  before('should NOT add a taskset', async () => {
-    const admin = new nearAPI.Account(near.connection, config.contractId);
-    const alice = new nearAPI.Account(near.connection, config.aliceId);
-    adminContract = new nearAPI.Contract(admin, config.contractId, methods);
-    aliceContract = new nearAPI.Contract(alice, config.contractId, methods);
-
+  it('should NOT add a taskset', async () => {
     await assert.rejects(async () => {
       await aliceContract.add_taskset({
         args: {
@@ -262,13 +272,42 @@ describe('User', async function () {
     });
   });
 
-  it('should be able to get assigned to a taskset', async function () {
-    this.timeout(15000);
-
+  it('should NOT be able to get assigned to a taskset', async function () {
     await assert.rejects(async () => {
       await aliceContract.change_taskset({
         args: {
           new_task_ord: 1,
+        },
+      });
+    });
+  });
+});
+
+describe('Registered User', async function () {
+  this.timeout(5000);
+
+  before(async function () {
+    this.timeout(10000);
+
+    await assert.doesNotReject(async () => {
+      await adminContract.add_taskset({
+        args: {
+          ordinal: 2, // index of taskset
+          max_price: '135000000000000000000000', // 0.135 N
+          min_price: '125000000000000000000000', // 0.125 N,
+          mtasks_per_second: '100', // 1 task per 100 seconds
+        },
+      });
+    });
+
+    await assert.doesNotReject(async () => {
+      await adminContract.add_tasks({
+        args: {
+          task_ordinal: 2,
+          hashes: [
+            '12345678901234567890123456789000'.split('').map(Number),
+            '12345678901234567890123456789001'.split('').map(Number),
+          ],
         },
       });
     });
@@ -280,15 +319,159 @@ describe('User', async function () {
         },
       });
     });
+  });
 
-    await assert.doesNotReject(async () => {
-      await aliceContract.change_taskset({
+  it('should NOT add a taskset', async () => {
+    await assert.rejects(async () => {
+      await aliceContract.add_taskset({
         args: {
-          new_task_ord: 1,
+          ordinal: 1,
+          max_price: '135000000000000000000000',
+          min_price: '125000000000000000000000',
+          mtasks_per_second: '100',
         },
       });
     });
+  });
 
+  it('should NOT add a task into a taskset', async () => {
+    await assert.rejects(async () => {
+      await aliceContract.add_tasks({
+        args: {
+          task_ordinal: 2,
+          hashes: ['12345678901234567890123456789002'.split('').map(Number)],
+        },
+      });
+    });
+  });
+
+  it('should NOT update a taskset', async () => {
+    await assert.rejects(async () => {
+      await aliceContract.update_taskset_prices({
+        args: {
+          task_ordinal: 2,
+          new_min_price: '126000000000000000000000',
+          new_max_price: '136000000000000000000000',
+        },
+      });
+    });
+  });
+
+  it('should NOT update tasks per second', async () => {
+    await assert.rejects(async () => {
+      await aliceContract.update_mtasks_per_second({
+        args: {
+          task_ordinal: 2,
+          mtasks_per_second: '102',
+        },
+      });
+    });
+  });
+
+  it('can NOT whitelist accounts', async () => {
+    await assert.rejects(async () => {
+      await aliceContract.whitelist_account({
+        args: {
+          account_id: config.aliceId,
+        },
+      });
+    });
+  });
+
+  it('can NOT ban accounts', async () => {
+    await assert.rejects(async () => {
+      await aliceContract.ban_account({
+        args: {
+          account_id: config.aliceId,
+        },
+      });
+    });
+  });
+
+  it('should be able to get assigned to a taskset', async () => {
+    await assert.doesNotReject(async () => {
+      await aliceContract.change_taskset({
+        args: {
+          new_task_ord: 2,
+        },
+      });
+    });
+  });
+
+  it('should NOT apply for an assignment in other taskset', async () => {
+    await assert.rejects(async () => {
+      await aliceContract.apply_for_assignment({
+        args: {
+          task_ordinal: 1,
+        },
+      });
+    });
+  });
+
+  it('should apply for an assignment', async () => {
+    await assert.doesNotReject(async () => {
+      await aliceContract.apply_for_assignment({
+        args: {
+          task_ordinal: 2,
+        },
+      });
+
+      // TODO: rejects(aliceContract.return_assignment()) within 5 minutes
+    });
+  });
+
+  it('should NOT claim an assignment with incorrect bid', async () => {
+    // TODO: doesNotReject(aliceContract.apply_for_assignment(task_ord: 2))
+    const state = await aliceContract.get_account_state({
+      task_ordinal: 2,
+      account_id: config.aliceId,
+    });
+
+    assert.deepEqual(state, {
+      WaitsForAssignment: {
+        bid: '135000000000000000000000',
+        time_left: '0',
+      },
+    });
+
+    await assert.rejects(async () => {
+      const result = await aliceContract.claim_assignment({
+        args: {
+          task_ordinal: 2,
+          bid: state.WaitsForAssignment.bid + '1',
+        },
+      });
+
+      assert.equal(result, true);
+    });
+  });
+
+  it('should claim an assignment', async () => {
+    const state = await aliceContract.get_account_state({
+      task_ordinal: 2,
+      account_id: config.aliceId,
+    });
+
+    assert.deepEqual(state, {
+      WaitsForAssignment: {
+        bid: '135000000000000000000000',
+        time_left: '0',
+      },
+    });
+
+    await assert.doesNotReject(async () => {
+      const result = await aliceContract.claim_assignment({
+        args: {
+          task_ordinal: 2,
+          bid: state.WaitsForAssignment.bid,
+        },
+      });
+
+      assert.equal(result, false);
+    });
+  });
+
+  after(async () => {
     await assert.doesNotReject(async () => {
       await adminContract.ban_account({
         args: {
@@ -296,24 +479,17 @@ describe('User', async function () {
         },
       });
     });
-
-    await assert.rejects(async () => {
-      await aliceContract.change_taskset({
-        args: {
-          new_task_ord: 1,
-        },
-      });
-    });
   });
 });
 
 after('Remove test accounts', async function () {
-  // Setting 10 seconds for the test execution (instead of 2 seconds).
   this.timeout(10000);
 
   const alice = new nearAPI.Account(near.connection, config.aliceId);
+  const bob = new nearAPI.Account(near.connection, config.bobId);
   const contract = new nearAPI.Account(near.connection, config.contractId);
 
   await alice.deleteAccount(config.masterId);
+  await bob.deleteAccount(config.masterId);
   await contract.deleteAccount(config.masterId);
 });
