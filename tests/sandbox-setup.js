@@ -11,6 +11,9 @@ const mochaGlobalSetup = async () => {
 };
 
 const mochaGlobalTeardown = async () => {
+  if (sandbox.exitCode === 1) {
+    console.log('Error: Sandbox server failure. Probably, it failed to start.');
+  }
   console.log('Stop sandbox...');
   kill(sandbox.pid);
 };
