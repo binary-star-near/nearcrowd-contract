@@ -482,6 +482,112 @@ describe('Registered User', async function () {
   });
 });
 
+describe('Anyone', async function () {
+  before(async function () {
+    this.timeout(10000);
+
+    await assert.doesNotReject(async () => {
+      await adminContract.add_taskset({
+        args: {
+          ordinal: 2, // index of taskset
+          max_price: '135000000000000000000000', // 0.135 N
+          min_price: '125000000000000000000000', // 0.125 N,
+          mtasks_per_second: '100', // 1 task per 100 seconds
+        },
+      });
+    });
+
+    await assert.doesNotReject(async () => {
+      await adminContract.add_tasks({
+        args: {
+          task_ordinal: 2,
+          hashes: [
+            '12345678901234567890123456789000'.split('').map(Number),
+            '12345678901234567890123456789001'.split('').map(Number),
+          ],
+        },
+      });
+    });
+
+    await assert.doesNotReject(async () => {
+      await adminContract.whitelist_account({
+        args: {
+          account_id: config.aliceId,
+        },
+      });
+    });
+
+    await assert.doesNotReject(async () => {
+      await aliceContract.change_taskset({
+        args: {
+          new_task_ord: 2,
+        },
+      });
+    });
+  });
+
+  it('should check whether any account is registered', async () => {
+    const result = await bobContract.is_account_whitelisted({
+      account_id: config.aliceId,
+    });
+    assert.equal(result, true);
+  });
+
+  it('should check a current taskset of any registered user', async () => {
+    const result = await bobContract.get_current_taskset({
+      account_id: config.aliceId,
+    });
+    assert.equal(result, 2);
+  });
+
+  it('should check a current task assignment of any registered user', async () => {
+    const result = await bobContract.get_current_assignment({
+      task_ordinal: 2,
+      account_id: config.aliceId,
+    });
+    assert.equal(result, null);
+  });
+
+  it('should get any account statistic', async () => {
+    const stats = await bobContract.get_account_stats({
+      account_id: config.aliceId,
+    });
+    assert.deepEqual(stats, { balance: '0', successful: 0, failed: 0 });
+  });
+
+  it('should get task execution state of any user', async () => {
+    const state = await aliceContract.get_account_state({
+      task_ordinal: 2,
+      account_id: config.aliceId,
+    });
+
+    assert.deepEqual(state, 'Idle');
+  });
+
+  it('should get any taskset state', async () => {
+    const state = await aliceContract.get_taskset_state({
+      task_ordinal: 2,
+    });
+
+    assert.deepEqual(state, {
+      next_price: '135000000000000000000000',
+      wait_time: '10000000000',
+      num_unassigned: '2',
+      num_reviews: '0',
+    });
+  });
+
+  after(async () => {
+    await assert.doesNotReject(async () => {
+      await adminContract.ban_account({
+        args: {
+          account_id: config.aliceId,
+        },
+      });
+    });
+  });
+});
+
 after('Remove test accounts', async function () {
   this.timeout(10000);
 
