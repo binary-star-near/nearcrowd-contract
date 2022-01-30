@@ -48,15 +48,18 @@ npm test
 
 ### On `sandbox`:
 
-Install sandbox:
-
+Run sandbox:
 ```bash
-npm install -g near-sandbox
-near-sandbox --home /tmp/near-sandbox init
-near-sandbox --home /tmp/near-sandbox run
+npm run sandbox:clean
+npm run sandbox
 ```
 
-Deploy:
+Deploy and seed with test data (while running sandbox in another terminal):
+```bash
+npm run sandbox:seed
+```
+
+Deploy the contract only:
 
 ```bash
 near deploy --wasmFile target/wasm32-unknown-unknown/release/nearcrowd.wasm --initFunction new --initArgs '{}' --accountId test.near --networkId sandbox --nodeUrl http://0.0.0.0:3030
