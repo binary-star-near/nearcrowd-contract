@@ -1,14 +1,44 @@
 'use strict';
-const { sandboxSetup } = require('./sandbox-init');
+const { sandboxSetup, config } = require('./sandbox-init');
+const crypto = require('crypto');
 
 process.env.NEAR_NO_LOGS = 'defined';
 
+/**
+ * Hash string to bytes array
+ * @param hex {string}
+ * @returns {number[]}
+ */
 function h(hex) {
   let bytes = [];
   for (let c = 0; c < hex.length; c += 2)
     bytes.push(parseInt(hex.substr(c, 2), 16));
   return bytes;
 }
+
+const hash = (s) => crypto.createHash('sha256').update(s).digest('hex');
+const hashAndBytesArray = (s) => h(hash(s));
+
+const tasks = Array.from(Array(100).keys()).map((_, i) => ({
+  metadata: 'lol kek ' + String(i)
+}))
+
+console.log({ tasks });
+
+const tasksets = [
+  {
+    ordinal: 0,
+    hashes: tasks.slice(0, 51).map(task => {
+      return hashAndBytesArray(JSON.stringify(task))
+    })
+  },
+  {
+    ordinal: 1,
+    hashes: tasks.slice(51, 100).map(taskMetadata => {
+      return hashAndBytesArray(JSON.stringify(taskMetadata))
+    })
+  }
+]
 
 describe('Seed', function () {
   this.timeout(15000);
@@ -20,42 +50,32 @@ describe('Seed', function () {
   it('should create taskset 0 and 1 with a few tasks', async () => {
     let contract = global.adminContract;
 
-    await contract.add_taskset({
+    await contract.whitelist_account({
       args: {
-        ordinal: 0,
-        max_price: '135000000000000000000000',
-        min_price: '125000000000000000000000',
-        mtasks_per_second: '100',
+        account_id: config.masterId,
       },
     });
 
-    await contract.add_taskset({
-      args: {
-        ordinal: 1,
-        max_price: '135000000000000000000000',
-        min_price: '125000000000000000000000',
-        mtasks_per_second: '100',
-      },
+    const addTasksetsActions = tasksets.map(taskset => {
+      return contract.add_taskset({
+        args: {
+          ordinal: taskset.ordinal,
+          max_price: '135000000000000000000000',
+          min_price: '125000000000000000000000',
+          mtasks_per_second: '100',
+        }
+      });
     });
+    await Promise.all(addTasksetsActions);
 
-    await contract.add_tasks({
-      args: {
-        task_ordinal: 0,
-        hashes: [
-          h('1122334455667788990011223344556677889900112233445566778899000001'),
-          h('1122334455667788990011223344556677889900112233445566778899000002'),
-        ],
-      },
+    const addTasksActions = tasksets.map(taskset => {
+      return contract.add_tasks({
+        args: {
+          task_ordinal: taskset.ordinal,
+          hashes: taskset.hashes,
+        }
+      });
     });
-
-    await contract.add_tasks({
-      args: {
-        task_ordinal: 1,
-        hashes: [
-          h('1122334455667788990011223344556677889900112233445566778899000003'),
-          h('1122334455667788990011223344556677889900112233445566778899000004'),
-        ],
-      },
-    });
+    await Promise.all(addTasksActions);
   });
 });
