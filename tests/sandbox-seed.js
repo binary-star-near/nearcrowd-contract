@@ -19,12 +19,15 @@ function h(hex) {
 const hash = (s) => crypto.createHash('sha256').update(s).digest('hex');
 const hashAndBytesArray = (s) => h(hash(s));
 
-const tasks = Array.from(Array(100).keys()).map((_, i) => ({
-  metadata: 'lol kek ' + String(i)
-}))
+/**
+ * Generates fake tasks (a simple metadata object) with image link.
+ */
+const generateFakeTask = (n) => ({
+  img: `https://picsum.photos/id/${n}/2000`,
+});
 
-console.log({ tasks });
-
+// Seed data
+const tasks = Array(100).fill({}).map((_, i) => generateFakeTask(i));
 const tasksets = [
   {
     ordinal: 0,
@@ -77,5 +80,8 @@ describe('Seed', function () {
       });
     });
     await Promise.all(addTasksActions);
+
+    console.log('Whitelisted account: ', config.masterId);
+    console.log('Added tasksets:', tasksets);
   });
 });
